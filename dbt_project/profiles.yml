@@ -1,0 +1,26 @@
+dbt_project:
+  outputs:
+    dev:
+      account: MGWUIGB-EE57826
+      database: DBT_DEMO_DB
+      password: "Arsenals123@SArsenals123@S"
+      role: DBT_ROLE
+      schema: DBT_DEMO_SCHEMA
+      threads: 1
+      type: snowflake
+      user: DBT_EFE
+      warehouse: DBT_WH
+  target: dev
+hospital_dbt_project:
+  outputs:
+    dev:
+      account: MGWUIGB-EE57826
+      database: HOSPITAL_RAW
+      password: "Arsenals123@SArsenals123@S"
+      role: ACCOUNTADMIN
+      schema: RAW_DATA
+      threads: 4
+      type: snowflake
+      user: IGBOWEEFE
+      warehouse: COMPUTE_WH
+  target: dev

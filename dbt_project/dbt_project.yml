@@ -1,0 +1,43 @@
+
+# Name your project! Project names should contain only lowercase characters
+# and underscores. A good package name should reflect your organization's
+# name or the intended use of these models
+name: 'hospital_dbt_project'
+version: '1.0.0'
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'hospital_dbt_project'
+
+# These configurations specify where dbt should look for different types of files.
+# The `model-paths` config, for example, states that models in this project can be
+# found in the "models/" directory. You probably won't need to change these!
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+
+# Configure model locations and materializations for Medallion Architecture
+models:
+  hospital_dbt_project: # Project name
+    # Bronze Layer: Sources + minimal transformation (staging)
+    bronze:
+      +materialized: view # Often views or ephemeral for bronze staging
+      +schema: bronze     # Target schema in Snowflake for bronze models
+
+    # Silver Layer: Cleaned, integrated data
+    silver:
+      +materialized: table # Typically tables for silver layer
+      +schema: silver     # Target schema in Snowflake for silver models
+
+    # Gold Layer: Business-focused, aggregated data marts
+    gold:
+      +materialized: table # Typically tables for gold layer
+      +schema: gold       # Target schema in Snowflake for gold models

@@ -1,0 +1,23 @@
+version: 2
+
+sources:
+  - name: raw_hospital_data # Arbitrary name for the source group
+    database: hospital_raw
+    schema: RAW_DATA      # Snowflake schema where raw tables exist
+    tables:
+      - name: employees
+        identifier: employees # Optional if table name matches 'name'
+      - name: patients
+      - name: departments
+      - name: patient_admissions
+      - name: billing
+      - name: department_finance
+      - name: overall_finance
+      - name: bed_occupancy
+      - name: er_performance
+      - name: equipment_availability
+      - name: staff_workload
+      - name: drug_inventory
+      - name: salary_payments
+      - name: hospital_expenses
+        # Add descriptions, tests, freshness checks here later
