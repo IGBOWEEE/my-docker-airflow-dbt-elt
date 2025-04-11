@@ -1,0 +1,29 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment (if any accidentally created)
+venv/
+env/
+.venv/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files (example for VSCode)
+.vscode/
+
+# Airflow generated/transient (logs are internal now, but good practice)
+# logs/
+# output_data/
+
+# DBT generated artifacts
+dbt_project/logs/
+dbt_project/target/
+dbt_project/dbt_packages/
+
+# Secrets / Environment specific
+# .env # Uncomment this line if you want to ignore the .env file (recommended)
