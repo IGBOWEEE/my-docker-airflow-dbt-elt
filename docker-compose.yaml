@@ -1,0 +1,209 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
+# Basic Airflow cluster configuration for LocalExecutor with PostgreSQL.
+# Adapted for custom build and project mounts.
+#
+# WARNING: This configuration is for local development. Do not use it in a production deployment.
+#
+# ... (rest of comments remain the same) ...
+#
+---
+x-airflow-common:
+  &airflow-common
+  # In order to add custom dependencies or upgrade provider packages you can use your extended image.
+  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
+  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.5} # <-- Commented out
+  build: . # <-- Uncommented and enabled
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor # <-- Changed to LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs_internal
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'efe1f1ed23f51e9dc464c9bdc75046e4'
+    AIRFLOW__CORE__TEST_CONNECTION: Enabled
+    AIRFLOW__LOGGING__WORKER_LOG_SERVER_HOST: 'localhost'
+    AIRFLOW__LOGGING__WORKER_LOG_SERVER_PORT: '8793'
+    # AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow # <-- Removed (not needed for LocalExecutor)
+    # AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0 # <-- Removed (not needed for LocalExecutor)
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'true' # Set to 'false' if you don't want example DAGs
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    # AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+  volumes:
+    # Original mounts for Airflow internal structure
+    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    #- ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    # --- ADDED Project-specific volume mounts ---
+    - ./scripts:/opt/airflow/scripts:ro # Mount scripts read-only
+    - ./sql:/opt/airflow/sql:ro         # Mount sql read-only
+    - ./dbt_project:/opt/airflow/dbt_project # Mount dbt project read-only
+    - ./output_data:/opt/airflow/output_data # Mount output (needs write access from scripts)
+    - ${HOME}/.dbt:/home/airflow/.dbt             # Mount host dbt config (profiles.yml) - Adjust source path if needed
+    - ${HOME}/.snowsql:/home/airflow/.snowsql     # Mount host snowsql config - Adjust source path if needed
+    # --- END ADD ---
+  user: "${AIRFLOW_UID:-50000}:0" # Uses UID from .env file if provided, otherwise defaults to 50000
+  depends_on:
+    &airflow-common-depends-on
+    # redis: # <-- Removed Redis dependency
+    #  condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 10
+      start_period: 30s
+      timeout: 5s
+    restart: always
+
+  # Redis service REMOVED
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on # Uses modified common dependencies (Postgres, Init)
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+   
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on # Uses modified common dependencies (Postgres, Init)
+      airflow-init:
+        condition: service_completed_successfully
+
+  # airflow-worker service REMOVED
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+  
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on # Uses modified common dependencies (Postgres, Init)
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    # yamllint disable rule:line-length
+    command:
+      - -c
+      - |
+        # ... (init command block remains the same) ...
+        if [[ -z "${AIRFLOW_UID}" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
+          echo "If you are on Linux, you SHOULD follow the instructions below to set "
+          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
+          echo "For other operating systems you can get rid of the warning with manually created .env file:"
+          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
+          echo
+        fi
+        one_meg=1048576
+        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
+        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
+        disk_available=$$(df / | tail -1 | awk '{print $$4}')
+        warning_resources="false"
+        if (( mem_available < 4000 )) ; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
+          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
+          echo
+          warning_resources="true"
+        fi
+        if (( cpus_available < 2 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
+          echo "At least 2 CPUs recommended. You have $${cpus_available}"
+          echo
+          warning_resources="true"
+        fi
+        if (( disk_available < one_meg * 10 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
+          echo "At least 10 GBs recommended. You have $$(numfmt --to iec $$((disk_available * 1024 )))"
+          echo
+          warning_resources="true"
+        fi
+        if [[ $${warning_resources} == "true" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
+          echo "Please follow the instructions to increase amount of resources available:"
+          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
+          echo
+        fi
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    # yamllint enable rule:line-length
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: '' # Ensure this is empty as requirements are in Dockerfile
+    user: "0:0" # Runs init as root
+    volumes:
+      # Mounts the project dir to /sources for init commands like chown
+      - .:/sources # Use '.' to represent the current directory where docker-compose is run
+
+  airflow-cli:
+    <<: *airflow-common
+    profiles:
+      - debug
+    environment:
+      <<: *airflow-common-env
+      CONNECTION_CHECK_MAX_COUNT: "0"
+    # Workaround for entrypoint issue. See: https://github.com/apache/airflow/issues/16252
+    command:
+      - bash
+      - -c
+      - airflow
+
+  # flower service REMOVED
+
+volumes:
+  postgres-db-volume:

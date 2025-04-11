@@ -1,0 +1,32 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment (if any accidentally created)
+venv/
+env/
+.venv/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files (example for VSCode)
+.vscode/
+
+# Airflow generated/transient (logs are internal now, but good practice)
+# logs/ # We unmounted this, but good to ignore if recreated
+# output_data/ # Ignore if it only contains transient generated data
+
+# DBT generated artifacts
+dbt_project/logs/
+dbt_project/target/
+dbt_project/dbt_packages/
+
+# Secrets / Environment specific - uncomment if needed
+# .env # Contains UID/GID currently, might be okay, but often ignored
+
+```    *   **Decision on `.env`:** Your current `.env` only contains UID/GID, which isn't strictly secret. However, it *is* environment-specific. Best practice is often to *ignore* `.env` and provide a template file like `.env.example` that *is* committed, instructing others how to create their `.env`. For now, you could commit it or ignore it. I'd lean towards ignoring it.
+*   **Decision on `output_data/`:** If this folder will only ever contain data generated *by* the script when the DAG runs, you probably don't need to commit it. If it contains source files you manually place there, you *would* commit it.
